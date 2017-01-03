@@ -1,5 +1,5 @@
-import feedparser, json, urllib, urllib2
-from flask import Flask, render_template, request
+import feedparser, json, urllib, urllib2, datetime
+from flask import Flask, render_template, request, make_response
 
 
 app = Flask(__name__)
@@ -20,39 +20,41 @@ DEFAULTS = {'publication':'bbc',
                'currency_from':'GBP',
                'currency_to':'USD'}
 
+def get_value_with_fallback(key):
+    if request.args.get(key):
+        return request.args.get(key)
+    if request.cookies.get(key):
+        return request.cookies.get(key)
+    return DEFAULTS[key]
+
 @app.route("/")
 def home():
-   # get customized headlines, based on user input or default
-   publication = request.args.get('publication')
-   if not publication:
-       publication = DEFAULTS['publication']
-   articles = get_news(publication)
-   # get customized weather based on user input or default
-   city = request.args.get('city')
-   if not city:
-       city = DEFAULTS['city']
-   weather = get_weather(city)
-   # get customized currency based on user input or default
-   currency_from = request.args.get("currency_from")
-   if not currency_from:
-       currency_from = DEFAULTS['currency_from']
-   currency_to = request.args.get("currency_to")
-   if not currency_to:
-       currency_to = DEFAULTS['currency_to']
-   rate, currencies = get_rate(currency_from, currency_to)
-   
-   return render_template("home.html", articles=articles,
-weather=weather,
-currency_from=currency_from, currency_to=currency_to, rate=rate,
-currencies=sorted(currencies))
+    # get customised headlines, based on user input or default
+    publication = get_value_with_fallback("publication")
+    articles = get_news(publication)
+    # get customised weather based on user input or default
+    city = get_value_with_fallback("city")
+    weather = get_weather (city)
+    # get customised currency based on user input or default
+    currency_from = get_value_with_fallback("currency_from")
+    currency_to = get_value_with_fallback("currency_to")
+    rate, currencies = get_rate(currency_from, currency_to)
+    # save cookies and return template
+    response = make_response(render_template("home.html",articles=articles,weather=weather, currency_from=currency_from,currency_to=currency_to, rate=rate,currencies=sorted(currencies)))
+    expires = datetime.datetime.now() +datetime.timedelta(days=365)
+    response.set_cookie("publication", publication,expires=expires)
+    response.set_cookie("city", city, expires=expires)
+    response.set_cookie("currency_from",currency_from, expires=expires)
+    response.set_cookie("currency_to",currency_to, expires=expires)
+    return response
 
 def get_news(query):
-   if not query or query.lower() not in RSS_FEED:
-       publication = DEFAULTS["publication"]
-   else:
-       publication = query.lower()
-   feed = feedparser.parse(RSS_FEED[publication])
-   return feed['entries']
+    if not query or query.lower() not in RSS_FEED:
+        publication = DEFAULTS["publication"]
+    else:
+        publication = query.lower()
+    feed = feedparser.parse(RSS_FEED[publication])
+    return feed['entries']
 
 def get_weather(query):
    query = urllib.quote(query)
